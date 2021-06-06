@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/zip"
+	"bytes"
 	"log"
 	"os"
 	"os/signal"
@@ -20,43 +22,10 @@ func main() {
 		log.Fatalf("Error creating discord connection: %v", err)
 	}
 	defer discord.Close()
+	discord.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsGuilds
 
-	discord.AddHandler(func(_ *discordgo.Session, event *discordgo.MessageCreate) {
-		if event.GuildID != "" && event.Message.Content == "!huokanadvertisertools" {
-			_, err := discord.ChannelMessageSendComplex(event.ChannelID, &discordgo.MessageSend{
-				Content: "Huokan Advertiser Tools",
-				Components: []discordgo.MessageComponent{
-					discordgo.ActionsRow{
-						Components: []discordgo.MessageComponent{
-							discordgo.Button{
-								Label:    "Download Addon",
-								Style:    discordgo.PrimaryButton,
-								CustomID: "download_addon",
-							},
-						},
-					},
-				},
-			})
-			if err != nil {
-				log.Fatalf("Error sending message with download button: %v", err)
-			}
-		}
-	})
-
-	discord.AddHandler(func(_ *discordgo.Session, event *discordgo.InteractionCreate) {
-		if event.Type == discordgo.InteractionMessageComponent && event.MessageComponentData().CustomID == "download_addon" {
-			err := discord.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
-				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionResponseData{
-					Content: "downloading.",
-					Flags:   64, // Ephemeral
-				},
-			})
-			if err != nil {
-				log.Fatalf("Error sending interaction response: %v", err)
-			}
-		}
-	})
+	discord.AddHandler(MessageCreateHandler)
+	discord.AddHandler(InteractionCreateHandler)
 
 	discord.Open()
 
@@ -64,4 +33,98 @@ func main() {
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM)
 	<-sc
 	log.Println("Stopping bot")
+}
+
+func MessageCreateHandler(discord *discordgo.Session, event *discordgo.MessageCreate) {
+	if event.GuildID != "" && event.Message.Content == "!huokanadvertisertools" {
+		guild, err := discord.State.Guild(event.GuildID)
+		if err != nil {
+			log.Printf("error fetching guild from state: %v", err)
+			return
+		}
+		if guild.OwnerID != event.Author.ID {
+			return
+		}
+
+		_, err = discord.ChannelMessageSendComplex(event.ChannelID, &discordgo.MessageSend{
+			Content: "Huokan Advertiser Tools",
+			Components: []discordgo.MessageComponent{
+				discordgo.ActionsRow{
+					Components: []discordgo.MessageComponent{
+						discordgo.Button{
+							Label:    "Download Addon",
+							Style:    discordgo.PrimaryButton,
+							CustomID: "download_addon",
+						},
+					},
+				},
+			},
+		})
+		if err != nil {
+			log.Printf("Error sending message with download button: %v", err)
+		}
+	}
+}
+
+func InteractionCreateHandler(discord *discordgo.Session, event *discordgo.InteractionCreate) {
+	if event.Type == discordgo.InteractionMessageComponent &&
+		event.MessageComponentData().CustomID == "download_addon" &&
+		event.Member != nil {
+
+		customScript := NewCustomScript()
+		customScript.SetDiscordTag(event.Member.User.String())
+		addon, err := getCustomizedAddon(customScript)
+		if err != nil {
+			log.Printf("failed to create custom zip: %v", err)
+			return
+		}
+		fileName := "HuokanAdvertiserTools.zip"
+		if addon.Version != "" {
+			fileName = "HuokanAdvertiserTools-" + addon.Version + ".zip"
+		}
+		_, err = sendDM(discord, event.Member.User.ID, &discordgo.MessageSend{
+			Files: []*discordgo.File{
+				{
+					Name:        fileName,
+					ContentType: "application/zip",
+					Reader:      bytes.NewReader(addon.Content),
+				},
+			},
+		})
+
+		response := "Check your DMs!"
+		if err != nil {
+			response = "Failed to send DM. Please make sure you are allowing DMs from server members."
+		}
+
+		err = discord.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Content: response,
+				Flags:   64, // Ephemeral
+			},
+		})
+		if err != nil {
+			log.Printf("Error sending interaction response: %v", err)
+		}
+	}
+}
+
+func sendDM(discord *discordgo.Session, userID string, message *discordgo.MessageSend) (*discordgo.Message, error) {
+	dmChannel, err := discord.UserChannelCreate(userID)
+	if err != nil {
+		return nil, err
+	}
+	sentMessage, err := discord.ChannelMessageSendComplex(dmChannel.ID, message)
+	return sentMessage, err
+}
+
+func getCustomizedAddon(customScript *CustomScript) (*PackagedAddon, error) {
+	unmodifiedZip, err := zip.OpenReader("HuokanAdvertiserTools.zip")
+	if err != nil {
+		return nil, err
+	}
+	defer unmodifiedZip.Close()
+	addon, err := Package(&unmodifiedZip.Reader, customScript)
+	return addon, err
 }
