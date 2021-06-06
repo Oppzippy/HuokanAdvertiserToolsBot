@@ -28,7 +28,10 @@ func main() {
 	discord.AddHandler(MessageCreateHandler)
 	discord.AddHandler(InteractionCreateHandler)
 
-	discord.Open()
+	err = discord.Open()
+	if err != nil {
+		errLogger.Fatalf("Error connecting to discord: %v", err)
+	}
 
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM)
