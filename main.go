@@ -13,6 +13,7 @@ import (
 )
 
 func main() {
+	logger.Println("Starting bot")
 	err := godotenv.Load()
 	if err != nil {
 		errLogger.Printf("Error loading .env file: %v", err)
