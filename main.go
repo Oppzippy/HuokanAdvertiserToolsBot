@@ -3,7 +3,7 @@ package main
 import (
 	"archive/zip"
 	"bytes"
-	"log"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -15,11 +15,11 @@ import (
 func main() {
 	err := godotenv.Load()
 	if err != nil {
-		log.Printf("Error loading .env file: %v", err)
+		errLogger.Printf("Error loading .env file: %v", err)
 	}
 	discord, err := discordgo.New("Bot " + os.Getenv("DISCORD_TOKEN"))
 	if err != nil {
-		log.Fatalf("Error creating discord connection: %v", err)
+		errLogger.Fatalf("Error creating discord connection: %v", err)
 	}
 	defer discord.Close()
 	discord.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentsGuilds
@@ -32,14 +32,14 @@ func main() {
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM)
 	<-sc
-	log.Println("Stopping bot")
+	logger.Println("Stopping bot")
 }
 
 func MessageCreateHandler(discord *discordgo.Session, event *discordgo.MessageCreate) {
 	if event.GuildID != "" && event.Message.Content == "!huokanadvertisertools" {
 		guild, err := discord.State.Guild(event.GuildID)
 		if err != nil {
-			log.Printf("error fetching guild from state: %v", err)
+			errLogger.Printf("error fetching guild from state: %v", err)
 			return
 		}
 		if guild.OwnerID != event.Author.ID {
@@ -61,7 +61,7 @@ func MessageCreateHandler(discord *discordgo.Session, event *discordgo.MessageCr
 			},
 		})
 		if err != nil {
-			log.Printf("Error sending message with download button: %v", err)
+			errLogger.Printf("Error sending message with download button: %v", err)
 		}
 	}
 }
@@ -75,7 +75,7 @@ func InteractionCreateHandler(discord *discordgo.Session, event *discordgo.Inter
 		customScript.SetDiscordTag(event.Member.User.String())
 		addon, err := getCustomizedAddon(customScript)
 		if err != nil {
-			log.Printf("failed to create custom zip: %v", err)
+			errLogger.Printf("failed to create custom zip: %v", err)
 			return
 		}
 		fileName := "HuokanAdvertiserTools.zip"
@@ -95,6 +95,8 @@ func InteractionCreateHandler(discord *discordgo.Session, event *discordgo.Inter
 		response := "Check your DMs!"
 		if err != nil {
 			response = "Failed to send DM. Please make sure you are allowing DMs from server members."
+		} else {
+			logger.Printf("Sent addon to %s", event.Member.User.String())
 		}
 
 		err = discord.InteractionRespond(event.Interaction, &discordgo.InteractionResponse{
@@ -105,7 +107,7 @@ func InteractionCreateHandler(discord *discordgo.Session, event *discordgo.Inter
 			},
 		})
 		if err != nil {
-			log.Printf("Error sending interaction response: %v", err)
+			errLogger.Printf("Error sending interaction response: %v", err)
 		}
 	}
 }
@@ -122,9 +124,12 @@ func sendDM(discord *discordgo.Session, userID string, message *discordgo.Messag
 func getCustomizedAddon(customScript *CustomScript) (*PackagedAddon, error) {
 	unmodifiedZip, err := zip.OpenReader("HuokanAdvertiserTools.zip")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error opening base addon zip: %v", err)
 	}
 	defer unmodifiedZip.Close()
 	addon, err := Package(&unmodifiedZip.Reader, customScript)
-	return addon, err
+	if err != nil {
+		return nil, fmt.Errorf("error packaging addon: %v", err)
+	}
+	return addon, nil
 }
