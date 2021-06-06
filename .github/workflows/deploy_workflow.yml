@@ -8,7 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Pull submodules
-        run: git submodule update
+        run: git submodule update --recursive
       - name: Use Go
         uses: actions/setup-go@v2
         with:
