@@ -24,6 +24,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v2
+      - name: Pull submodules
+        run: git submodule update --init --recursive
       - name: Use Go
         uses: actions/setup-go@v2
         with:
