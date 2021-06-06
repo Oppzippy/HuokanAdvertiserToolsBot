@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"io"
+	"io/ioutil"
+	"log"
 	"regexp"
 )
 
@@ -18,30 +20,17 @@ func Package(reader *zip.Reader, customScript *CustomScript) (*PackagedAddon, er
 	var version string
 
 	for _, inputFile := range reader.File {
-		f, err := writer.Create(inputFile.Name)
-		if err != nil {
-			return nil, err
-		}
-
-		var content []byte
-		if inputFile.Name == "HuokanAdvertiserTools/Custom.lua" {
-			content = []byte(customScript.GetCustomScript())
-		} else {
-			content, err = readFileFromZip(inputFile)
-			if err != nil {
-				return nil, err
-			}
-			if inputFile.Name == "HuokanAdvertiserTools/HuokanAdvertiserTools.toc" {
-				version = getTOCVersion(string(content))
-			}
-		}
-		_, err = f.Write(content)
-		if err != nil {
-			return nil, err
-		}
+		copyAddonFile(writer, inputFile, customScript)
+	}
+	toc, err := readTOC(reader)
+	if err == nil {
+		version = getTOCVersion(string(toc))
+	} else {
+		log.Printf("error reading toc: %v", err)
 	}
 
-	err := writer.Close()
+	err = writer.Close()
+
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +39,25 @@ func Package(reader *zip.Reader, customScript *CustomScript) (*PackagedAddon, er
 		Version: version,
 		Content: output.Bytes(),
 	}, nil
+}
+
+func copyAddonFile(writer *zip.Writer, inputFile *zip.File, customScript *CustomScript) error {
+	f, err := writer.Create(inputFile.Name)
+	if err != nil {
+		return err
+	}
+
+	var content []byte
+	if inputFile.Name == "HuokanAdvertiserTools/Custom.lua" {
+		content = []byte(customScript.GetCustomScript())
+	} else {
+		content, err = readFileFromZip(inputFile)
+		if err != nil {
+			return err
+		}
+	}
+	_, err = f.Write(content)
+	return err
 }
 
 func readFileFromZip(input *zip.File) ([]byte, error) {
@@ -65,6 +73,15 @@ func readFileFromZip(input *zip.File) ([]byte, error) {
 	}
 
 	return content, nil
+}
+
+func readTOC(reader *zip.Reader) ([]byte, error) {
+	f, err := reader.Open("HuokanAdvertiserTools/HuokanAdvertiserTools.toc")
+	if err != nil {
+		return nil, err
+	}
+	content, err := ioutil.ReadAll(f)
+	return content, err
 }
 
 // $ only matches \n, not \r\n, so we need to manually ensure there is no trailing \r
