@@ -6,5 +6,6 @@ replace github.com/bwmarrin/discordgo => ./discordgo
 
 require (
 	github.com/bwmarrin/discordgo v0.23.2
+	github.com/fsnotify/fsnotify v1.4.9
 	github.com/joho/godotenv v1.3.0
 )
