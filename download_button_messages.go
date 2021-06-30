@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/gob"
+	"encoding/json"
 	"io"
 	"sync"
 )
@@ -53,7 +53,7 @@ func (mc *DownloadButtonMessageCollection) Messages() []DownloadButtonMessage {
 
 func (mc *DownloadButtonMessageCollection) Write(w io.Writer) error {
 	messages := mc.Messages()
-	encoder := gob.NewEncoder(w)
+	encoder := json.NewEncoder(w)
 	err := encoder.Encode(messages)
 	if err != nil {
 		return err
@@ -64,7 +64,7 @@ func (mc *DownloadButtonMessageCollection) Write(w io.Writer) error {
 func (mc *DownloadButtonMessageCollection) Read(r io.Reader) error {
 	mc.mutex.Lock()
 	defer mc.mutex.Unlock()
-	decoder := gob.NewDecoder(r)
+	decoder := json.NewDecoder(r)
 	err := decoder.Decode(&mc.messages)
 	return err
 }

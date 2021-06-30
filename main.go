@@ -46,6 +46,11 @@ func main() {
 		errLogger.Fatalf("error connecting to discord: %v", err)
 	}
 
+	err = updateMessages(discord, messageCollection)
+	if err != nil {
+		errLogger.Printf("error updating messages: %v", err)
+	}
+
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM)
 	<-sc
@@ -76,7 +81,7 @@ func getCustomizedAddon(customScript *CustomScript) (*PackagedAddon, error) {
 
 func loadMessages() (*DownloadButtonMessageCollection, error) {
 	messageCollection := NewDownloadButtonMessageCollection()
-	f, err := os.Open("messages")
+	f, err := os.Open("messages.json")
 	if err != nil {
 		pathError, ok := err.(*os.PathError)
 		if !ok || pathError.Err != syscall.ENOENT {
@@ -90,46 +95,53 @@ func loadMessages() (*DownloadButtonMessageCollection, error) {
 
 func watchMessages(discord *discordgo.Session, mc *DownloadButtonMessageCollection) (done chan struct{}, err error) {
 	done, err = watch(".", "HuokanAdvertiserTools.zip", func() {
-		addon, err := getCustomizedAddon(NewCustomScript())
+		err := updateMessages(discord, mc)
 		if err != nil {
-			errLogger.Printf("error creating custom addon zip: %v", err)
-			return
-		}
-		for _, message := range mc.Messages() {
-			edit := discordgo.NewMessageEdit(message.ChannelID, message.MessageID)
-			edit.Components = []discordgo.MessageComponent{
-				discordgo.ActionsRow{
-					Components: []discordgo.MessageComponent{
-						discordgo.Button{
-							Label:    "Download Addon",
-							Style:    discordgo.PrimaryButton,
-							CustomID: "download_addon",
-						},
-					},
-				},
-			}
-			content := "Huokan Advertiser Tools " + addon.Version
-			edit.Content = &content
-			_, err := discord.ChannelMessageEditComplex(edit)
-			if err != nil {
-				restErr, ok := err.(*discordgo.RESTError)
-				if ok && restErr.Message.Code == discordgo.ErrCodeUnknownMessage {
-					mc.Remove(message)
-					f, err := os.Create("messages")
-					if err != nil {
-						errLogger.Printf("error creating messages file: %v", err)
-					}
-					err = mc.Write(f)
-					if err != nil {
-						errLogger.Printf("error writing messages: %v", err)
-					}
-					f.Close()
-				} else {
-					errLogger.Printf("error updating version: %v", err)
-				}
-			}
+			errLogger.Printf("error updating messages after version change: %v", err)
 		}
 	})
 
 	return done, err
+}
+
+func updateMessages(discord *discordgo.Session, mc *DownloadButtonMessageCollection) error {
+	addon, err := getCustomizedAddon(NewCustomScript())
+	if err != nil {
+		return fmt.Errorf("error creating custom addon zip: %v", err)
+	}
+	for _, message := range mc.Messages() {
+		edit := discordgo.NewMessageEdit(message.ChannelID, message.MessageID)
+		edit.Components = []discordgo.MessageComponent{
+			discordgo.ActionsRow{
+				Components: []discordgo.MessageComponent{
+					discordgo.Button{
+						Label:    "Download Addon",
+						Style:    discordgo.PrimaryButton,
+						CustomID: "download_addon",
+					},
+				},
+			},
+		}
+		content := "Huokan Advertiser Tools " + addon.Version
+		edit.Content = &content
+		_, err := discord.ChannelMessageEditComplex(edit)
+		if err != nil {
+			restErr, ok := err.(*discordgo.RESTError)
+			if ok && restErr.Message.Code == discordgo.ErrCodeUnknownMessage {
+				mc.Remove(message)
+				f, err := os.Create("messages.json")
+				if err != nil {
+					return fmt.Errorf("error creating messages file: %v", err)
+				}
+				err = mc.Write(f)
+				if err != nil {
+					return fmt.Errorf("error writing messages: %v", err)
+				}
+				f.Close()
+			} else {
+				return fmt.Errorf("error updating version: %v", err)
+			}
+		}
+	}
+	return nil
 }

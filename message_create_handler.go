@@ -39,7 +39,7 @@ func newMessageCreateHandler(mc *DownloadButtonMessageCollection) func(discord *
 					ChannelID: m.ChannelID,
 					MessageID: m.ID,
 				})
-				f, err := os.Create("messages")
+				f, err := os.Create("messages.json")
 				if err != nil {
 					errLogger.Printf("error creating messages file: %v", err)
 				} else {
