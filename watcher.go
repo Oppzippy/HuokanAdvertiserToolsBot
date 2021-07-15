@@ -30,7 +30,7 @@ func watch(dir, file string, callback func()) (done chan struct{}, err error) {
 				if !ok {
 					return
 				}
-				if event.Name == file {
+				if event.Name == file || event.Name == "./"+file { // file name is prepended with ./ on linux
 					debouncedCallback()
 				}
 			case err, ok := <-watcher.Errors:
